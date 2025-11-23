@@ -9,7 +9,7 @@ const BACKEND_API = (() => {
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return '/api'; // Local backend
     } else {
-        return CORS_PROXY; // Firebase or remote - use CORS proxy
+        return 'https://weather-app-wg7l.onrender.com/api'; // Render backend
     }
 })();
 
@@ -69,43 +69,53 @@ async function fetchWeatherByCity(city) {
     try {
         console.log('Fetching weather for:', city);
         
-        let url;
-        if (BACKEND_API === '/api') {
-            // Local backend
-            url = `${BACKEND_API}/weather?city=${encodeURIComponent(city)}`;
-        } else {
-            // CORS proxy for remote
-            url = `${BACKEND_API}${API_BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
-        }
+        // Try backend first, then fall back to CORS proxy
+        let currentData, forecastData;
         
-        const weatherResponse = await fetch(url);
-        
-        if (!weatherResponse.ok) {
-            if (weatherResponse.status === 404) {
-                throw new Error('City not found. Please check the spelling and try again.');
+        try {
+            // Attempt 1: Use backend API
+            const weatherUrl = `${BACKEND_API}/weather?city=${encodeURIComponent(city)}`;
+            const forecastUrl = `${BACKEND_API}/forecast?city=${encodeURIComponent(city)}`;
+            
+            const weatherResponse = await Promise.race([
+                fetch(weatherUrl),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000))
+            ]);
+            
+            if (!weatherResponse.ok) {
+                throw new Error('Backend error');
             }
-            throw new Error(`Failed to fetch weather data. Status: ${weatherResponse.status}`);
+
+            currentData = await weatherResponse.json();
+            console.log('Current weather data:', currentData);
+
+            const forecastResponse = await fetch(forecastUrl);
+            if (!forecastResponse.ok) {
+                throw new Error('Forecast error');
+            }
+            forecastData = await forecastResponse.json();
+            console.log('Forecast data:', forecastData);
+        } catch (backendError) {
+            // Fallback to CORS proxy
+            console.log('Backend failed, using CORS proxy:', backendError.message);
+            const weatherUrl = `${CORS_PROXY}${API_BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
+            const forecastUrl = `${CORS_PROXY}${API_BASE_URL}/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
+            
+            const weatherResponse = await fetch(weatherUrl);
+            if (!weatherResponse.ok) {
+                if (weatherResponse.status === 404) {
+                    throw new Error('City not found. Please check the spelling and try again.');
+                }
+                throw new Error(`Failed to fetch weather data. Status: ${weatherResponse.status}`);
+            }
+            currentData = await weatherResponse.json();
+
+            const forecastResponse = await fetch(forecastUrl);
+            if (!forecastResponse.ok) {
+                throw new Error('Failed to fetch forecast data.');
+            }
+            forecastData = await forecastResponse.json();
         }
-
-        const currentData = await weatherResponse.json();
-        console.log('Current weather data:', currentData);
-
-        // Fetch 5-day forecast
-        let forecastUrl;
-        if (BACKEND_API === '/api') {
-            forecastUrl = `${BACKEND_API}/forecast?city=${encodeURIComponent(city)}`;
-        } else {
-            forecastUrl = `${BACKEND_API}${API_BASE_URL}/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
-        }
-
-        const forecastResponse = await fetch(forecastUrl);
-
-        if (!forecastResponse.ok) {
-            throw new Error('Failed to fetch forecast data.');
-        }
-
-        const forecastData = await forecastResponse.json();
-        console.log('Forecast data:', forecastData);
 
         displayCurrentWeather(currentData);
         displayForecast(forecastData);
@@ -119,39 +129,53 @@ async function fetchWeatherByCity(city) {
 
 // Fetch Weather by Coordinates
 async function fetchWeatherByCoordinates(lat, lon) {
+    showLoading();
+    hideError();
+    
     try {
         console.log('Fetching weather for coordinates:', lat, lon);
         
-        let url;
-        if (BACKEND_API === '/api') {
-            url = `${BACKEND_API}/weather?lat=${lat}&lon=${lon}`;
-        } else {
-            url = `${BACKEND_API}${API_BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+        let currentData, forecastData;
+        
+        try {
+            // Attempt 1: Use backend API
+            const weatherUrl = `${BACKEND_API}/weather?lat=${lat}&lon=${lon}`;
+            const forecastUrl = `${BACKEND_API}/forecast?lat=${lat}&lon=${lon}`;
+            
+            const weatherResponse = await Promise.race([
+                fetch(weatherUrl),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000))
+            ]);
+
+            if (!weatherResponse.ok) {
+                throw new Error('Backend error');
+            }
+
+            currentData = await weatherResponse.json();
+
+            const forecastResponse = await fetch(forecastUrl);
+            if (!forecastResponse.ok) {
+                throw new Error('Forecast error');
+            }
+            forecastData = await forecastResponse.json();
+        } catch (backendError) {
+            // Fallback to CORS proxy
+            console.log('Backend failed, using CORS proxy:', backendError.message);
+            const weatherUrl = `${CORS_PROXY}${API_BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+            const forecastUrl = `${CORS_PROXY}${API_BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+            
+            const weatherResponse = await fetch(weatherUrl);
+            if (!weatherResponse.ok) {
+                throw new Error('Failed to fetch weather data for your location.');
+            }
+            currentData = await weatherResponse.json();
+
+            const forecastResponse = await fetch(forecastUrl);
+            if (!forecastResponse.ok) {
+                throw new Error('Failed to fetch forecast data.');
+            }
+            forecastData = await forecastResponse.json();
         }
-
-        const weatherResponse = await fetch(url);
-
-        if (!weatherResponse.ok) {
-            throw new Error('Failed to fetch weather data for your location.');
-        }
-
-        const currentData = await weatherResponse.json();
-
-        // Fetch 5-day forecast
-        let forecastUrl;
-        if (BACKEND_API === '/api') {
-            forecastUrl = `${BACKEND_API}/forecast?lat=${lat}&lon=${lon}`;
-        } else {
-            forecastUrl = `${BACKEND_API}${API_BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
-        }
-
-        const forecastResponse = await fetch(forecastUrl);
-
-        if (!forecastResponse.ok) {
-            throw new Error('Failed to fetch forecast data.');
-        }
-
-        const forecastData = await forecastResponse.json();
 
         displayCurrentWeather(currentData);
         displayForecast(forecastData);
