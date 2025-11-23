@@ -1,8 +1,12 @@
 // API Configuration
 const API_KEY = '9dc298a363b8d9e3872afa77f5632f40';
 const API_BASE_URL = 'https://api.openweathermap.org/data/2.5';
-// CORS proxy that works reliably
-const CORS_PROXY = 'https://cors-anywhere.herokuapp.com/';
+// Multiple CORS proxies - try in order
+const CORS_PROXIES = [
+    'https://api.allorigins.win/raw?url=',
+    'https://cors-anywhere.herokuapp.com/',
+    'https://thingproxy.freeboard.io/fetch/'
+];
 
 // Determine API endpoint
 const BACKEND_API = (() => {
@@ -61,6 +65,33 @@ function handleGeolocation() {
     );
 }
 
+// Helper function to fetch with multiple CORS proxy fallbacks
+async function fetchWithCORSFallback(url) {
+    // For allorigins, wrap the URL
+    const alloriginsUrl = CORS_PROXIES[0] + encodeURIComponent(url);
+    const corsanywhereUrl = CORS_PROXIES[1] + url;
+    const thingproxyUrl = CORS_PROXIES[2] + url;
+    
+    const urls = [alloriginsUrl, corsanywhereUrl, thingproxyUrl];
+    
+    for (let proxyUrl of urls) {
+        try {
+            console.log('Trying CORS proxy:', proxyUrl);
+            const response = await Promise.race([
+                fetch(proxyUrl),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+            ]);
+            if (response.ok) {
+                return response;
+            }
+        } catch (e) {
+            console.log('CORS proxy failed, trying next:', e.message);
+            continue;
+        }
+    }
+    throw new Error('All CORS proxies failed');
+}
+
 // Fetch Weather by City
 async function fetchWeatherByCity(city) {
     showLoading();
@@ -98,10 +129,10 @@ async function fetchWeatherByCity(city) {
         } catch (backendError) {
             // Fallback to CORS proxy
             console.log('Backend failed, using CORS proxy:', backendError.message);
-            const weatherUrl = `${CORS_PROXY}${API_BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
-            const forecastUrl = `${CORS_PROXY}${API_BASE_URL}/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
+            const weatherUrl = `${API_BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
+            const forecastUrl = `${API_BASE_URL}/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
             
-            const weatherResponse = await fetch(weatherUrl);
+            const weatherResponse = await fetchWithCORSFallback(weatherUrl);
             if (!weatherResponse.ok) {
                 if (weatherResponse.status === 404) {
                     throw new Error('City not found. Please check the spelling and try again.');
@@ -110,7 +141,7 @@ async function fetchWeatherByCity(city) {
             }
             currentData = await weatherResponse.json();
 
-            const forecastResponse = await fetch(forecastUrl);
+            const forecastResponse = await fetchWithCORSFallback(forecastUrl);
             if (!forecastResponse.ok) {
                 throw new Error('Failed to fetch forecast data.');
             }
@@ -161,16 +192,16 @@ async function fetchWeatherByCoordinates(lat, lon) {
         } catch (backendError) {
             // Fallback to CORS proxy
             console.log('Backend failed, using CORS proxy:', backendError.message);
-            const weatherUrl = `${CORS_PROXY}${API_BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
-            const forecastUrl = `${CORS_PROXY}${API_BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+            const weatherUrl = `${API_BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+            const forecastUrl = `${API_BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
             
-            const weatherResponse = await fetch(weatherUrl);
+            const weatherResponse = await fetchWithCORSFallback(weatherUrl);
             if (!weatherResponse.ok) {
                 throw new Error('Failed to fetch weather data for your location.');
             }
             currentData = await weatherResponse.json();
 
-            const forecastResponse = await fetch(forecastUrl);
+            const forecastResponse = await fetchWithCORSFallback(forecastUrl);
             if (!forecastResponse.ok) {
                 throw new Error('Failed to fetch forecast data.');
             }
