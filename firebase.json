@@ -4,21 +4,7 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**",
-      "functions/**",
-      "DEPLOYMENT_GUIDE.md",
-      "README_DEPLOY.md",
-      "server.js"
-    ],
-    "rewrites": [
-      {
-        "source": "/api/**",
-        "function": "weatherApi"
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
+      "**/node_modules/**"
     ]
   },
   "functions": {
