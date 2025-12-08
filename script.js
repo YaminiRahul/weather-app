@@ -1,340 +1,334 @@
-// API Configuration
-const API_KEY = '9dc298a363b8d9e3872afa77f5632f40';
-const API_BASE_URL = 'https://api.openweathermap.org/data/2.5';
-// Multiple CORS proxies - try in order
-const CORS_PROXIES = [
-    'https://api.allorigins.win/raw?url=',
-    'https://cors-anywhere.herokuapp.com/',
-    'https://thingproxy.freeboard.io/fetch/'
-];
+// =======================
+//  CONFIG
+// =======================
 
-// Determine API endpoint
-const BACKEND_API = (() => {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return '/api'; // Local backend
-    } else {
-        return 'https://weather-app-wg7l.onrender.com/api'; // Render backend
+// Our Node backend base URL (same origin)
+const BACKEND_API = '/api';
+
+// =======================
+//  DOM ELEMENTS
+// =======================
+const cityInput = document.getElementById("cityInput");
+const searchBtn = document.getElementById("searchBtn");
+const locationBtn = document.getElementById("locationBtn");
+
+const errorMessage = document.getElementById("errorMessage");
+const loadingSpinner = document.getElementById("loadingSpinner");
+
+const currentWeather = document.getElementById("currentWeather");
+const forecastContainer = document.getElementById("forecastContainer");
+const mlCard = document.getElementById("ml-card");
+
+// Current weather elements
+const cityNameEl = document.getElementById("cityName");
+const currentDateEl = document.getElementById("currentDate");
+const weatherIconEl = document.getElementById("weatherIcon");
+const temperatureEl = document.getElementById("temperature");
+const weatherDescriptionEl = document.getElementById("weatherDescription");
+const feelsLikeEl = document.getElementById("feelsLike");
+const humidityEl = document.getElementById("humidity");
+const windSpeedEl = document.getElementById("windSpeed");
+const pressureEl = document.getElementById("pressure");
+
+// =======================
+//  EVENT LISTENERS
+// =======================
+
+if (searchBtn) {
+  searchBtn.addEventListener("click", handleSearch);
+}
+
+if (cityInput) {
+  cityInput.addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      handleSearch();
     }
-})();
+  });
+}
 
-// DOM Elements
-const cityInput = document.getElementById('cityInput');
-const searchBtn = document.getElementById('searchBtn');
-const locationBtn = document.getElementById('locationBtn');
-const errorMessage = document.getElementById('errorMessage');
-const loadingSpinner = document.getElementById('loadingSpinner');
-const currentWeather = document.getElementById('currentWeather');
-const forecastContainer = document.getElementById('forecastContainer');
+if (locationBtn) {
+  locationBtn.addEventListener("click", handleGeolocation);
+}
 
-// Event Listeners
-searchBtn.addEventListener('click', handleSearch);
-cityInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        handleSearch();
-    }
-});
-locationBtn.addEventListener('click', handleGeolocation);
+// =======================
+//  MAIN HANDLERS
+// =======================
 
-// Handle Search
 function handleSearch() {
-    const city = cityInput.value.trim();
-    if (!city) {
-        showError('Please enter a city name');
-        return;
-    }
-    fetchWeatherByCity(city);
+  const city = cityInput.value.trim();
+  if (!city) {
+    showError("Please enter a city name.");
+    return;
+  }
+  fetchWeatherByCity(city);
 }
 
-// Handle Geolocation
 function handleGeolocation() {
-    if (!navigator.geolocation) {
-        showError('Geolocation is not supported by your browser');
-        return;
-    }
+  if (!navigator.geolocation) {
+    showError("Geolocation is not supported by your browser.");
+    return;
+  }
 
-    showLoading();
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const { latitude, longitude } = position.coords;
-            fetchWeatherByCoordinates(latitude, longitude);
-        },
-        (error) => {
-            hideLoading();
-            showError('Unable to retrieve your location. Please check your permissions.');
-        }
-    );
+  showLoading();
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+      fetchWeatherByCoordinates(latitude, longitude);
+    },
+    () => {
+      hideLoading();
+      showError("Unable to retrieve your location. Please check your permissions.");
+    }
+  );
 }
 
-// Helper function to fetch with multiple CORS proxy fallbacks
-async function fetchWithCORSFallback(url) {
-    // For allorigins, wrap the URL
-    const alloriginsUrl = CORS_PROXIES[0] + encodeURIComponent(url);
-    const corsanywhereUrl = CORS_PROXIES[1] + url;
-    const thingproxyUrl = CORS_PROXIES[2] + url;
-    
-    const urls = [alloriginsUrl, corsanywhereUrl, thingproxyUrl];
-    
-    for (let proxyUrl of urls) {
-        try {
-            console.log('Trying CORS proxy:', proxyUrl);
-            const response = await Promise.race([
-                fetch(proxyUrl),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
-            ]);
-            if (response.ok) {
-                return response;
-            }
-        } catch (e) {
-            console.log('CORS proxy failed, trying next:', e.message);
-            continue;
-        }
-    }
-    throw new Error('All CORS proxies failed');
-}
+// =======================
+//  FETCH FUNCTIONS
+// =======================
 
-// Fetch Weather by City
 async function fetchWeatherByCity(city) {
-    showLoading();
-    hideError();
+  showLoading();
+  hideError();
 
-    try {
-        console.log('Fetching weather for:', city);
-        
-        // Try backend first, then fall back to CORS proxy
-        let currentData, forecastData;
-        
-        try {
-            // Attempt 1: Use backend API
-            const weatherUrl = `${BACKEND_API}/weather?city=${encodeURIComponent(city)}`;
-            const forecastUrl = `${BACKEND_API}/forecast?city=${encodeURIComponent(city)}`;
-            
-            const weatherResponse = await Promise.race([
-                fetch(weatherUrl),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000))
-            ]);
-            
-            if (!weatherResponse.ok) {
-                throw new Error('Backend error');
-            }
+  try {
+    const weatherUrl = `${BACKEND_API}/weather?city=${encodeURIComponent(city)}`;
+    const forecastUrl = `${BACKEND_API}/forecast?city=${encodeURIComponent(city)}`;
 
-            currentData = await weatherResponse.json();
-            console.log('Current weather data:', currentData);
+    const [weatherRes, forecastRes] = await Promise.all([
+      fetch(weatherUrl),
+      fetch(forecastUrl),
+    ]);
 
-            const forecastResponse = await fetch(forecastUrl);
-            if (!forecastResponse.ok) {
-                throw new Error('Forecast error');
-            }
-            forecastData = await forecastResponse.json();
-            console.log('Forecast data:', forecastData);
-        } catch (backendError) {
-            // Fallback to CORS proxy
-            console.log('Backend failed, using CORS proxy:', backendError.message);
-            const weatherUrl = `${API_BASE_URL}/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
-            const forecastUrl = `${API_BASE_URL}/forecast?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
-            
-            const weatherResponse = await fetchWithCORSFallback(weatherUrl);
-            if (!weatherResponse.ok) {
-                if (weatherResponse.status === 404) {
-                    throw new Error('City not found. Please check the spelling and try again.');
-                }
-                throw new Error(`Failed to fetch weather data. Status: ${weatherResponse.status}`);
-            }
-            currentData = await weatherResponse.json();
+    const weatherData = await weatherRes.json().catch(() => null);
+    const forecastData = await forecastRes.json().catch(() => null);
 
-            const forecastResponse = await fetchWithCORSFallback(forecastUrl);
-            if (!forecastResponse.ok) {
-                throw new Error('Failed to fetch forecast data.');
-            }
-            forecastData = await forecastResponse.json();
-        }
-
-        displayCurrentWeather(currentData);
-        displayForecast(forecastData);
-        hideLoading();
-    } catch (error) {
-        console.error('Error:', error);
-        hideLoading();
-        showError(error.message || 'Failed to fetch weather data. Please try again.');
+    // --- Better error messages ---
+    if (!weatherRes.ok) {
+      const apiMsg = (weatherData && weatherData.message) || "";
+      if (weatherRes.status === 404 || apiMsg.toLowerCase() === "city not found") {
+        throw new Error("City not found. Please check the spelling and try again.");
+      }
+      throw new Error(`Weather API error: ${apiMsg || "Failed to fetch current weather."}`);
     }
+
+    if (!forecastRes.ok) {
+      const apiMsg = (forecastData && forecastData.message) || "";
+      throw new Error(`Forecast API error: ${apiMsg || "Failed to fetch forecast."}`);
+    }
+
+    displayCurrentWeather(weatherData);
+    displayForecast(forecastData);
+    updateMLCardSafe(weatherData); // fire & forget
+
+  } catch (err) {
+    console.error("fetchWeatherByCity error:", err);
+    showError(err.message || "Failed to fetch weather data. Please try again.");
+  } finally {
+    hideLoading();
+  }
 }
 
-// Fetch Weather by Coordinates
 async function fetchWeatherByCoordinates(lat, lon) {
-    showLoading();
-    hideError();
-    
-    try {
-        console.log('Fetching weather for coordinates:', lat, lon);
-        
-        let currentData, forecastData;
-        
-        try {
-            // Attempt 1: Use backend API
-            const weatherUrl = `${BACKEND_API}/weather?lat=${lat}&lon=${lon}`;
-            const forecastUrl = `${BACKEND_API}/forecast?lat=${lat}&lon=${lon}`;
-            
-            const weatherResponse = await Promise.race([
-                fetch(weatherUrl),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000))
-            ]);
+  showLoading();
+  hideError();
 
-            if (!weatherResponse.ok) {
-                throw new Error('Backend error');
-            }
+  try {
+    const weatherUrl = `${BACKEND_API}/weather?lat=${lat}&lon=${lon}`;
+    const forecastUrl = `${BACKEND_API}/forecast?lat=${lat}&lon=${lon}`;
 
-            currentData = await weatherResponse.json();
+    const [weatherRes, forecastRes] = await Promise.all([
+      fetch(weatherUrl),
+      fetch(forecastUrl),
+    ]);
 
-            const forecastResponse = await fetch(forecastUrl);
-            if (!forecastResponse.ok) {
-                throw new Error('Forecast error');
-            }
-            forecastData = await forecastResponse.json();
-        } catch (backendError) {
-            // Fallback to CORS proxy
-            console.log('Backend failed, using CORS proxy:', backendError.message);
-            const weatherUrl = `${API_BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
-            const forecastUrl = `${API_BASE_URL}/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
-            
-            const weatherResponse = await fetchWithCORSFallback(weatherUrl);
-            if (!weatherResponse.ok) {
-                throw new Error('Failed to fetch weather data for your location.');
-            }
-            currentData = await weatherResponse.json();
+    const weatherData = await weatherRes.json().catch(() => null);
+    const forecastData = await forecastRes.json().catch(() => null);
 
-            const forecastResponse = await fetchWithCORSFallback(forecastUrl);
-            if (!forecastResponse.ok) {
-                throw new Error('Failed to fetch forecast data.');
-            }
-            forecastData = await forecastResponse.json();
-        }
-
-        displayCurrentWeather(currentData);
-        displayForecast(forecastData);
-        hideLoading();
-    } catch (error) {
-        console.error('Error:', error);
-        hideLoading();
-        showError(error.message || 'Failed to fetch weather data.');
+    if (!weatherRes.ok) {
+      const apiMsg = (weatherData && weatherData.message) || "";
+      throw new Error(
+        `Weather API error for your location: ${apiMsg || "Failed to fetch current weather."}`
+      );
     }
+
+    if (!forecastRes.ok) {
+      const apiMsg = (forecastData && forecastData.message) || "";
+      throw new Error(
+        `Forecast API error for your location: ${apiMsg || "Failed to fetch forecast."}`
+      );
+    }
+
+    displayCurrentWeather(weatherData);
+    displayForecast(forecastData);
+    updateMLCardSafe(weatherData);
+
+  } catch (err) {
+    console.error("fetchWeatherByCoordinates error:", err);
+    showError(err.message || "Failed to fetch weather data. Please try again.");
+  } finally {
+    hideLoading();
+  }
 }
 
-// Display Current Weather
+// =======================
+//  DISPLAY FUNCTIONS
+// =======================
+
 function displayCurrentWeather(data) {
-    const cityName = document.getElementById('cityName');
-    const currentDate = document.getElementById('currentDate');
-    const weatherIcon = document.getElementById('weatherIcon');
-    const temperature = document.getElementById('temperature');
-    const weatherDescription = document.getElementById('weatherDescription');
-    const feelsLike = document.getElementById('feelsLike');
-    const humidity = document.getElementById('humidity');
-    const windSpeed = document.getElementById('windSpeed');
-    const pressure = document.getElementById('pressure');
+  if (!data || !data.main || !data.weather || !data.weather[0]) {
+    showError("Unexpected weather data format.");
+    return;
+  }
 
-    // Update city name and date
-    cityName.textContent = `${data.name}, ${data.sys.country}`;
-    currentDate.textContent = formatDate(new Date());
+  const now = new Date();
 
-    // Update weather icon
-    const iconCode = data.weather[0].icon;
-    weatherIcon.src = `https://openweathermap.org/img/wn/${iconCode}@4x.png`;
-    weatherIcon.alt = data.weather[0].description;
+  cityNameEl.textContent = `${data.name || "Unknown"}, ${data.sys?.country || ""}`;
+  currentDateEl.textContent = formatDate(now);
 
-    // Update temperature and description
-    temperature.textContent = Math.round(data.main.temp);
-    weatherDescription.textContent = data.weather[0].description;
+  const iconCode = data.weather[0].icon;
+  weatherIconEl.src = `https://openweathermap.org/img/wn/${iconCode}@4x.png`;
+  weatherIconEl.alt = data.weather[0].description || "Weather icon";
 
-    // Update weather details
-    feelsLike.textContent = `${Math.round(data.main.feels_like)}°C`;
-    humidity.textContent = `${data.main.humidity}%`;
-    windSpeed.textContent = `${data.wind.speed} m/s`;
-    pressure.textContent = `${data.main.pressure} hPa`;
+  temperatureEl.textContent = Math.round(data.main.temp);
+  weatherDescriptionEl.textContent = data.weather[0].description || "";
 
-    // Show the current weather card
-    currentWeather.classList.add('show');
+  feelsLikeEl.textContent = `${Math.round(data.main.feels_like)}°C`;
+  humidityEl.textContent = `${data.main.humidity}%`;
+  windSpeedEl.textContent = `${data.wind?.speed ?? 0} m/s`;
+  pressureEl.textContent = `${data.main.pressure} hPa`;
+
+  currentWeather.classList.add("show");
 }
 
-// Display 5-Day Forecast
 function displayForecast(data) {
-    forecastContainer.innerHTML = '';
+  forecastContainer.innerHTML = "";
 
-    // Get one forecast per day (at 12:00 PM)
-    const dailyForecasts = data.list.filter(item => 
-        item.dt_txt.includes('12:00:00')
-    ).slice(0, 5);
+  if (!data || !Array.isArray(data.list)) {
+    return;
+  }
 
-    dailyForecasts.forEach(forecast => {
-        const forecastCard = createForecastCard(forecast);
-        forecastContainer.appendChild(forecastCard);
-    });
+  const daily = data.list
+    .filter((item) => item.dt_txt && item.dt_txt.includes("12:00:00"))
+    .slice(0, 5);
+
+  daily.forEach((forecast) => {
+    const card = createForecastCard(forecast);
+    forecastContainer.appendChild(card);
+  });
 }
 
-// Create Forecast Card
 function createForecastCard(forecast) {
-    const card = document.createElement('div');
-    card.className = 'forecast-card';
-    card.setAttribute('data-testid', 'forecast-card');
+  const card = document.createElement("div");
+  card.className = "forecast-card";
+  card.setAttribute("data-testid", "forecast-card");
 
-    const date = new Date(forecast.dt * 1000);
-    const iconCode = forecast.weather[0].icon;
+  const date = new Date(forecast.dt * 1000);
+  const iconCode = forecast.weather[0].icon;
 
-    card.innerHTML = `
-        <div class="forecast-date" data-testid="forecast-date">${formatForecastDate(date)}</div>
-        <img src="https://openweathermap.org/img/wn/${iconCode}@2x.png" 
-             alt="${forecast.weather[0].description}" 
-             class="forecast-icon"
-             data-testid="forecast-icon">
-        <div class="forecast-temp" data-testid="forecast-temp">${Math.round(forecast.main.temp)}°C</div>
-        <div class="forecast-description" data-testid="forecast-description">${forecast.weather[0].description}</div>
-        <div class="forecast-details">
-            <div class="forecast-detail">
-                <i class="fas fa-droplet"></i>
-                <span data-testid="forecast-humidity">${forecast.main.humidity}%</span>
-            </div>
-            <div class="forecast-detail">
-                <i class="fas fa-wind"></i>
-                <span data-testid="forecast-wind">${forecast.wind.speed} m/s</span>
-            </div>
-        </div>
-    `;
+  card.innerHTML = `
+    <div class="forecast-date" data-testid="forecast-date">${formatForecastDate(
+      date
+    )}</div>
+    <img
+      src="https://openweathermap.org/img/wn/${iconCode}@2x.png"
+      alt="${forecast.weather[0].description}"
+      class="forecast-icon"
+      data-testid="forecast-icon"
+    >
+    <div class="forecast-temp" data-testid="forecast-temp">
+      ${Math.round(forecast.main.temp)}°C
+    </div>
+    <div class="forecast-description" data-testid="forecast-description">
+      ${forecast.weather[0].description}
+    </div>
+    <div class="forecast-details">
+      <div class="forecast-detail">
+        <i class="fas fa-droplet"></i>
+        <span data-testid="forecast-humidity">${forecast.main.humidity}%</span>
+      </div>
+      <div class="forecast-detail">
+        <i class="fas fa-wind"></i>
+        <span data-testid="forecast-wind">${forecast.wind.speed} m/s</span>
+      </div>
+    </div>
+  `;
 
-    return card;
+  return card;
 }
 
-// Utility Functions
+// =======================
+//  ML CARD (SAFE WRAPPER)
+// =======================
+
+function updateMLCardSafe(currentData) {
+  if (!mlCard || !currentData || !currentData.main) return;
+
+  (async () => {
+    try {
+      const payload = {
+        temp_mean: currentData.main.temp,
+        temp_max: currentData.main.temp_max,
+        temp_min: currentData.main.temp_min,
+        wind_speed: currentData.wind?.speed ?? 0,
+      };
+
+      const resp = await fetch(`${BACKEND_API}/ml/rain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        throw new Error("ML API error");
+      }
+
+      const ml = await resp.json();
+      const prob = ml.probability != null ? Math.round(ml.probability * 100) : null;
+
+      mlCard.textContent =
+        ml.will_rain_tomorrow === 1
+          ? `ML prediction: High chance of rain tomorrow (${prob ?? "?"}%).`
+          : `ML prediction: Low chance of rain tomorrow (${prob ?? "?"}%).`;
+    } catch (e) {
+      console.warn("ML prediction unavailable:", e.message);
+      mlCard.textContent =
+        "ML prediction: currently unavailable, but live weather forecast is shown above.";
+    }
+  })();
+}
+
+// =======================
+//  UTILITIES
+// =======================
+
 function formatDate(date) {
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    return date.toLocaleDateString('en-US', options);
+  const opts = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
+  return date.toLocaleDateString("en-US", opts);
 }
 
 function formatForecastDate(date) {
-    const options = { weekday: 'short', month: 'short', day: 'numeric' };
-    return date.toLocaleDateString('en-US', options);
+  const opts = { weekday: "short", month: "short", day: "numeric" };
+  return date.toLocaleDateString("en-US", opts);
 }
 
 function showLoading() {
-    loadingSpinner.classList.add('show');
-    currentWeather.classList.remove('show');
-    forecastContainer.innerHTML = '';
+  if (loadingSpinner) loadingSpinner.classList.add("show");
+  if (currentWeather) currentWeather.classList.remove("show");
+  if (forecastContainer) forecastContainer.innerHTML = "";
 }
 
 function hideLoading() {
-    loadingSpinner.classList.remove('show');
+  if (loadingSpinner) loadingSpinner.classList.remove("show");
 }
 
 function showError(message) {
-    errorMessage.textContent = message;
-    errorMessage.classList.add('show');
-    setTimeout(() => {
-        hideError();
-    }, 5000);
+  if (!errorMessage) return;
+  errorMessage.textContent = message;
+  errorMessage.classList.add("show");
+  setTimeout(hideError, 5000);
 }
 
 function hideError() {
-    errorMessage.classList.remove('show');
+  if (!errorMessage) return;
+  errorMessage.classList.remove("show");
 }
-
-// Load default city on page load (optional)
-window.addEventListener('load', () => {
-    // You can uncomment the line below to load a default city
-    // fetchWeatherByCity('London');
-});
